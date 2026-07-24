@@ -7,7 +7,6 @@ import math
 
 from scipy.stats import multivariate_normal, norm
 
-
 import geomstats.backend as gs
 import geomstats.errors as errors
 from geomstats.geometry.base import VectorSpaceOpenSet
@@ -25,9 +24,14 @@ from geomstats.information_geometry.base import (
     ScipyMultivariateRandomVariable,
     ScipyUnivariateRandomVariable,
 )
-from geomstats.numerics.geodesic import ExpODESolver, GSIVPIntegrator, LogODESolver, ScipySolveBVP
+from geomstats.numerics.geodesic import (
+    ExpODESolver,
+    GSIVPIntegrator,
+    LogODESolver,
+    ScipySolveBVP,
+)
 from geomstats.vectorization import broadcast_to_multibatch, get_batch_shape, repeat_out
-from geomstats.information_geometry.base import AlphaConnection
+
 
 class NormalDistributions:
     """Class for the normal distributions.
@@ -926,35 +930,41 @@ class MultivariateNormalDistributionsRandomVariable(ScipyMultivariateRandomVaria
 class UnivariateNormalAlpha(AlphaConnection):
     r"""Alpha-connection on the manifold of univariate normal distributions.
 
-    This class implements the α-connections associated with the Fisher–Rao
-    metric on the manifold of univariate Gaussian distributions parameterized
-    by:
+    This class implements the :math:`\alpha`-connections associated with the
+    Fisher-Rao metric on the manifold of univariate Gaussian distributions
+    parameterized by
 
-        θ = (μ, σ)
+    .. math::
+
+        \theta = (\mu, \sigma),
+
+    where :math:`\mu` is the mean and :math:`\sigma` is the standard deviation.
+
+    The :math:`\alpha`-Christoffel symbols of the first kind are defined by
+
+    .. math::
+
+        \Gamma^{(\alpha)}_{ijk}
+        =
+        \Gamma^{(0)}_{ijk}
+        -
+        \frac{\alpha}{2} T_{ijk},
 
     where:
-        μ : mean
-        σ : standard deviation
 
-    The α-Christoffel symbols of the first kind are defined by:
-
-    Γ^{(α)}_{ijk}
-        = Γ^{(0)}_{ijk} - (α / 2) T_{ijk}
-
-    where:
-        - Γ^{(0)}_{ijk} are the Levi-Civita Christoffel symbols
-          of the Fisher–Rao metric (first kind),
-        - T_{ijk} is the covariant Amari–Chentsov tensor.
+    - :math:`\Gamma^{(0)}_{ijk}` are the Levi-Civita Christoffel symbols
+    of the Fisher-Rao metric of the first kind;
+    - :math:`T_{ijk}` is the covariant Amari-Chentsov tensor.
 
     Parameters
     ----------
     space : Manifold
         Manifold of univariate normal distributions.
     riemannian_manifold : Manifold
-        Manifold equipped with the Fisher–Rao metric, used to compute
+        Manifold equipped with the Fisher-Rao metric, used to compute
         the Levi-Civita Christoffel symbols and the metric matrix.
     alpha : float
-        Value of the α parameter of the connection.
+        Value of the :math:`\alpha` parameter of the connection.
     ivp_kwargs : dict, optional
         Keyword arguments passed to the IVP integrator used by
         ``exp_solver``. Default: ``{"step_type": "rk4", "n_steps": 200}``.
@@ -962,32 +972,30 @@ class UnivariateNormalAlpha(AlphaConnection):
         Keyword arguments passed to the BVP solver used by
         ``log_solver``. Default: ``{"tol": 1e-3, "max_nodes": 1000}``.
     """
-    def __init__(self, space, riemannian_manifold, alpha, ivp_kwargs=None, bvp_kwargs=None):
+
+    def __init__(
+        self, space, riemannian_manifold, alpha, ivp_kwargs=None, bvp_kwargs=None
+    ):
         super().__init__(space, riemannian_manifold, alpha)
 
         ivp_kwargs = ivp_kwargs or dict(step_type="rk4", n_steps=200)
         bvp_kwargs = bvp_kwargs or dict(tol=1e-3, max_nodes=1000)
 
-        self.exp_solver = ExpODESolver(
-            space, integrator=GSIVPIntegrator(**ivp_kwargs)
-        )
-        self.log_solver = LogODESolver(
-            space, integrator=ScipySolveBVP(**bvp_kwargs)
-    )
-
+        self.exp_solver = ExpODESolver(space, integrator=GSIVPIntegrator(**ivp_kwargs))
+        self.log_solver = LogODESolver(space, integrator=ScipySolveBVP(**bvp_kwargs))
 
     def amari_tensor_covariant(self, base_point):
-        r"""Compute the covariant Amari–Chentsov tensor T_{ijk}.
+        r"""Compute the covariant Amari-Chentsov tensor :math:`T_{ijk}`.
 
         Parameters
         ----------
         base_point : array-like, shape=[..., 2]
-            Point representing a normal distribution (μ, σ).
+            Point representing a normal distribution :math:`(\mu, \sigma)`.
 
         Returns
         -------
         tensor : array-like, shape=[..., 2, 2, 2]
-            Covariant Amari tensor T_{ijk}.
+            Covariant Amari tensor :math:`T_{ijk}`.
         """
         sigma = base_point[..., 1]
 
@@ -1001,81 +1009,56 @@ class UnivariateNormalAlpha(AlphaConnection):
 
         return tensor
 
-    def fisher_rao_first_kind_christoffels(self, base_point):
-        r"""Compute Levi-Civita Christoffel symbols of first kind.
-
-        These are the Christoffel symbols associated with the
-        Fisher–Rao metric:
-
-            Γ^{(0)}_{ijk}
-
-        Parameters
-        ----------
-        base_point : array-like, shape=[..., 2]
-
-        Returns
-        -------
-        christoffels : array-like, shape=[..., 2, 2, 2]
-            Christoffel symbols of first kind.
-        """
-        metric = self._riemannian_manifold.metric.metric_matrix(base_point)
-
-        christoffels_second = (
-            self._riemannian_manifold.metric.christoffels(base_point)
-        )
-
-        christoffels_first = gs.einsum(
-            "...kl,...lij->...ijk",
-            metric,
-            christoffels_second,
-        )
-
-        return christoffels_first
-
     def first_kind_christoffels(self, base_point):
-        r"""Compute α-Christoffel symbols of first kind.
+        r"""Compute the :math:`\alpha`-Christoffel symbols of the first kind.
 
-        The formula used is:
+        The formula used is
 
-            Γ^{(α)}_{ijk}
-                = Γ^{(0)}_{ijk}
-                  - (α / 2) T_{ijk}
+        .. math::
+
+            \Gamma^{(\alpha)}_{ijk}
+            =
+            \Gamma^{(0)}_{ijk}
+            -
+            \frac{\alpha}{2} T_{ijk}.
 
         Parameters
         ----------
         base_point : array-like, shape=[..., 2]
+            Point representing a normal distribution :math:`(\mu, \sigma)`.
 
         Returns
         -------
         christoffels : array-like, shape=[..., 2, 2, 2]
-            α-Christoffel symbols of first kind.
+            :math:`\alpha`-Christoffel symbols of the first kind.
         """
-        gamma_lc = self.fisher_rao_first_kind_christoffels(
-            base_point
-        )
+        gamma_lc = self._riemannian_manifold.metric.first_kind_christoffels(base_point)
 
         amari = self.amari_tensor_covariant(base_point)
 
         return gamma_lc - (self.alpha / 2.0) * amari
 
-
     def jacobian_christoffels(self, base_point):
-        '''
-        Compute the Jacobian of the Christoffel symbols.
+        r"""Compute the Jacobian of the Christoffel symbols.
 
         Parameters
         ----------
         base_point : array-like, shape=[..., 2]
-            Point representing a normal distribution (μ, σ).
+            Point representing a normal distribution :math:`(\mu, \sigma)`.
 
         Returns
         -------
         jac : array-like, shape=[..., 2, 2, 2, 2]
             Jacobian of the Christoffel symbols.
-            
-            The last index is the differenciation variable: 
-            jac[..., k, i, j, l] = \partial_l \Gamma^k_{ij}
-        '''
+
+            The last index is the differentiation variable:
+
+            .. math::
+
+                \mathtt{jac}[\ldots, k, i, j, l]
+                =
+                \partial_l \Gamma^k_{ij}.
+        """
         sigma = base_point[..., 1]
         alpha = self.alpha
         batch_shape = base_point.shape[:-1]
@@ -1088,4 +1071,3 @@ class UnivariateNormalAlpha(AlphaConnection):
         jac[..., 1, 1, 1, 1] = (1 + 2 * alpha) / sigma**2
 
         return jac
-

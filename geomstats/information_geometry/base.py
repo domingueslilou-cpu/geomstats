@@ -214,7 +214,7 @@ class AlphaConnection(Connection):
 
     The α-Christoffel symbols of the second kind are obtained by raising the
     last index of the first-kind symbols using the inverse Fisher–Rao metric:
-    
+
         \Gamma^{k(\alpha)}_{ij}
         = g^{kl} \Gamma^{(\alpha)}_{ijl}
 
@@ -272,66 +272,3 @@ class AlphaConnection(Connection):
             "...kl, ...ijl -> ...kij", cometric_matrix, first_kind_christoffels
         )
         return second_kind_christoffels
-    
-    def jacobian_christoffels(self, base_point):
-        r"""Compute the Jacobian of the Christoffel symbols.
-
-        Parameters
-        ----------
-        base_point : array-like, shape=[..., dim]
-            Base point.
-
-        Returns
-        -------
-        matrix : array-like, shape=[..., dim, dim, dim, dim]
-            Jacobian of the Christoffel symbols.
-        """
-        raise NotImplementedError
-    
-    def riemann_tensor(self, base_point=None):
-        r"""Compute Riemannian tensor at base_point.
-
-        In the literature the Riemannian curvature tensor is noted :math:`R_{ijk}^l`.
-
-        Following tensor index convention (ref. Wikipedia), we have:
-        :math:`R_{ijk}^l = dx^l(R(X_j, X_k)X_i)`
-
-        which gives :math:`R_{ijk}^l` as a sum of four terms:
-
-        .. math::
-            \partial_j \Gamma^l_{ki} - \partial_k \Gamma^l_{ji}
-            + \Gamma^l_{jm} \Gamma^m_{ki} - \Gamma^l_{km} \Gamma^m_{ji}
-
-        Note that geomstats puts the contravariant index on
-        the first dimension of the Christoffel symbols.
-
-        Parameters
-        ----------
-        base_point : array-like, shape=[..., dim]
-            Point on the manifold.
-
-        Returns
-        -------
-        riemann_curvature : array-like, shape=[..., dim, dim, dim, dim]
-            riemann_tensor[...,i,j,k,l] = R_{ijk}^l
-            Riemannian tensor curvature,
-            with the contravariant index on the last dimension.
-        """
-        if len(self._space.shape) > 1:
-            raise NotImplementedError(
-                "Riemann tensor not implemented for manifolds with points of ndim > 1."
-            )
-        christoffels = self.christoffels(base_point)
-        jacobian_christoffels = gs.autodiff.jacobian_vec(self.christoffels)(base_point)
-
-        prod_christoffels = gs.einsum(
-            "...ijk,...klm->...ijlm", christoffels, christoffels
-        )
-        riemann_curvature = (
-            gs.einsum("...ijlm->...lmji", jacobian_christoffels)
-            - gs.einsum("...ijlm->...ljmi", jacobian_christoffels)
-            + gs.einsum("...ijlm->...mjli", prod_christoffels)
-            - gs.einsum("...ijlm->...lmji", prod_christoffels)
-        )
-
-        return riemann_curvature
